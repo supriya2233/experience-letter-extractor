@@ -43,19 +43,14 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
   const [approving, setApproving] = useState(false);
   const [approvalMsg, setApprovalMsg] = useState('');
 
-  const { document: doc, extracted_data: data, validation, pipeline_stages, is_mock, ai_provider, raw_ai_json, processing_time_ms } = result;
+  const { document: doc, extracted_data: data, validation, is_mock, ai_provider, raw_ai_json, processing_time_ms } = result;
 
   const handleApprove = async () => {
     setApproving(true);
-    try {
-      const res = await fetch('http://localhost:8000/api/approve', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ updated_data: editData, approval_notes: 'Approved via UI' }),
-      });
-      if (res.ok) { setApproved(true); setApprovalMsg('Record approved successfully!'); }
-    } catch { setApprovalMsg('Approval failed — backend unreachable.'); }
-    finally { setApproving(false); }
+    await Promise.resolve();
+    setApproved(true);
+    setApprovalMsg('Record approved successfully on this device!');
+    setApproving(false);
   };
 
   return (
@@ -263,7 +258,7 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
               id="copy-json-btn"
               className="btn-secondary"
               style={{ padding: '4px 12px', fontSize: '0.75rem' }}
-              onClick={() => navigator.clipboard.writeText(JSON.stringify(raw_ai_json ?? extracted_data, null, 2))}
+              onClick={() => navigator.clipboard.writeText(JSON.stringify(raw_ai_json ?? data, null, 2))}
             >
               Copy JSON
             </button>

@@ -1,13 +1,14 @@
 'use client';
 import { useState, useRef, useCallback } from 'react';
 import { SampleDocument } from '../types/api';
+import { processFile as runFilePipeline, processSample as runSamplePipeline, SAMPLES } from '../lib/pipeline';
 
 interface UploadCardProps {
   onResult: (data: unknown) => void;
   onProcessing: (val: boolean) => void;
 }
 
-const ACCEPTED = ['.pdf', '.docx', '.png', '.jpg', '.jpeg'];
+const ACCEPTED = ['.pdf', '.docx', '.txt'];
 const MAX_MB = 20;
 
 function formatBytes(b: number) {
@@ -29,7 +30,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
 
   const validateFile = (f: File): string => {
     const ext = '.' + f.name.split('.').pop()?.toLowerCase();
-    if (!ACCEPTED.includes(ext)) return `Unsupported type "${ext}". Use PDF, DOCX, PNG, or JPEG.`;
+    if (!ACCEPTED.includes(ext)) return `Unsupported type "${ext}". Use PDF, DOCX, or TXT.`;
     if (f.size > MAX_MB * 1024 * 1024) return `File too large (${formatBytes(f.size)}). Max ${MAX_MB} MB.`;
     return '';
   };
@@ -48,20 +49,13 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
     }, 250);
 
     try {
-      const form = new FormData();
-      form.append('file', f);
-      const res = await fetch('http://localhost:8000/api/process', { method: 'POST', body: form });
       clearInterval(interval);
       setProgress(100);
-      if (!res.ok) {
-        const detail = await res.json();
-        throw new Error(detail.detail || 'Processing failed');
-      }
-      const data = await res.json();
+      const data = await runFilePipeline(f);
       onResult(data);
     } catch (e: unknown) {
       clearInterval(interval);
-      setError((e as Error).message || 'Upload failed. Is the backend running?');
+      setError((e as Error).message || 'Upload failed.');
       setProgress(0);
     } finally {
       onProcessing(false);
@@ -77,13 +71,9 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
 
   const loadSamples = async () => {
     if (samplesLoaded) { setShowSamples(s => !s); return; }
-    try {
-      const res = await fetch('http://localhost:8000/api/samples');
-      const data = await res.json();
-      setSamples(data);
-      setSamplesLoaded(true);
-      setShowSamples(true);
-    } catch { setError('Could not load samples. Is the backend running?'); }
+    setSamples(SAMPLES);
+    setSamplesLoaded(true);
+    setShowSamples(true);
   };
 
   const processSample = async (id: string) => {
@@ -91,9 +81,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
     setError('');
     onProcessing(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/process-sample/${id}`, { method: 'POST' });
-      if (!res.ok) throw new Error('Sample processing failed');
-      const data = await res.json();
+      const data = await runSamplePipeline(id);
       onResult(data);
       setShowSamples(false);
     } catch (e: unknown) {
@@ -119,7 +107,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
           Extract Experience Letter Data
         </h2>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-          Upload a PDF, DOCX, or image — our AI extracts and validates all fields instantly.
+          Upload a PDF, DOCX, or text file — our AI extracts and validates all fields instantly.
         </p>
       </div>
 
@@ -148,7 +136,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
           {dragOver ? 'Drop your file here' : 'Drag & drop your file here'}
         </p>
         <p style={{ margin: '0 0 20px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          or click to browse — PDF, DOCX, PNG, JPEG · Max {MAX_MB} MB
+          or click to browse — PDF, DOCX, TXT · Max {MAX_MB} MB
         </p>
 
         <button
@@ -183,7 +171,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
       {file && (
         <div className="glass-card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 24 }}>
-            {file.name.endsWith('.pdf') ? '📄' : file.name.endsWith('.docx') ? '📝' : '🖼️'}
+            {file.name.endsWith('.pdf') ? '📄' : file.name.endsWith('.docx') ? '📝' : '📃'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
@@ -263,10 +251,9 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
 
       {/* Accepted types */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20, justifyContent: 'center' }}>
-        {['PDF', 'DOCX', 'PNG', 'JPEG'].map(t => (
+        {['PDF', 'DOCX', 'TXT'].map(t => (
           <span key={t} className="badge badge-blue">{t}</span>
         ))}
-        <span className="badge badge-purple">OCR for Images</span>
         <span className="badge badge-green">AI Extraction</span>
       </div>
     </div>

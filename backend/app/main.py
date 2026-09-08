@@ -34,27 +34,35 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Sample documents
 # ---------------------------------------------------------------------------
-SAMPLES_DIR = os.path.join(os.path.dirname(__file__), "..", "samples")
+SAMPLES_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "samples"))
 
 SAMPLE_REGISTRY = [
     SampleDocument(
-        id="sample1",
-        title="Standard Experience Letter",
-        filename="sample1.txt",
+        id="sample1-pdf",
+        title="Standard Experience Letter (PDF)",
+        filename="sample1_standard.pdf",
         description="A well-formatted experience letter with all required fields present.",
         expected_type="Experience Letter",
         raw_text=""
     ),
     SampleDocument(
-        id="sample2",
+        id="sample1-docx",
+        title="Standard Experience Letter (DOCX)",
+        filename="sample1_standard.docx",
+        description="The same complete experience letter in an editable document.",
+        expected_type="Experience Letter",
+        raw_text=""
+    ),
+    SampleDocument(
+        id="sample2-pdf",
         title="Different Writing Style",
-        filename="sample2.txt",
+        filename="sample2_different_style.pdf",
         description="An experience certificate using alternate phrasing and layout.",
         expected_type="Experience Certificate",
         raw_text=""
     ),
     SampleDocument(
-        id="sample3",
+        id="sample3-txt",
         title="Missing Information",
         filename="sample3.txt",
         description="A letter with several fields absent — tests validation warnings/fails.",
@@ -63,12 +71,12 @@ SAMPLE_REGISTRY = [
     ),
 ]
 
-def _load_sample_text(filename: str) -> str:
+def _load_sample_bytes(filename: str) -> bytes:
     path = os.path.join(SAMPLES_DIR, filename)
     if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, "rb") as f:
             return f.read()
-    return ""
+    return b""
 
 def _build_pipeline_stages(
     detection_method: str,
@@ -96,10 +104,44 @@ def _build_pipeline_stages(
                       detail="Extraction complete. Review your results.", duration_ms=None),
     ]
 
-def _process_text(raw_text: str, filename: str, file_type: str, method: str,
-                  page_count: int, is_scanned: bool) -> ProcessingResponse:
+def process_document(file_bytes: bytes, filename: str) -> ProcessingResponse:
     t0 = time.time()
-    stage_times = {"upload": 10.0, "detection": 15.0, "extraction": round((time.time() - t0) * 1000, 1)}
+    if len(file_bytes) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="File too large. Maximum 20 MB allowed.")
+
+    doc_type, _ = detect_document_type(filename, file_bytes)
+    if doc_type == "unknown":
+        raise HTTPException(status_code=400, detail="Unsupported file type. Please upload PDF, DOCX, PNG, or JPEG.")
+
+    is_scanned = False
+    page_count = 1
+    if doc_type == "pdf":
+        raw_text, page_count, is_scanned = extract_text_from_pdf(file_bytes)
+        method = "pdf_parser"
+    elif doc_type == "docx":
+        raw_text = extract_text_from_docx(file_bytes)
+        method = "docx_parser"
+    elif doc_type == "text":
+        raw_text = file_bytes.decode("utf-8", errors="replace")
+        method = "text_reader"
+    elif doc_type == "image":
+        try:
+            import pytesseract
+            from PIL import Image
+            image = Image.open(io.BytesIO(file_bytes))
+            raw_text = pytesseract.image_to_string(image)
+            method = "tesseract_ocr"
+            is_scanned = True
+        except ImportError:
+            raise HTTPException(status_code=501, detail="Tesseract/Pillow not installed. Cannot process image files.")
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported document type.")
+
+    stage_times = {
+        "upload": round((time.time() - t0) * 1000, 1),
+        "detection": 0.0,
+        "extraction": round((time.time() - t0) * 1000, 1),
+    }
 
     ai_provider, is_mock, ai_name = get_ai_provider()
 
@@ -114,7 +156,7 @@ def _process_text(raw_text: str, filename: str, file_type: str, method: str,
 
     doc_result = DocumentExtractionResult(
         filename=filename,
-        file_type=file_type,
+        file_type=doc_type,
         method=method,
         page_count=page_count,
         raw_text=raw_text,
@@ -123,7 +165,7 @@ def _process_text(raw_text: str, filename: str, file_type: str, method: str,
 
     pipeline = _build_pipeline_stages(
         detection_method=method,
-        doc_type=file_type,
+        doc_type=doc_type,
         is_scanned=is_scanned,
         ai_provider_name=ai_name,
         stage_times=stage_times,
@@ -155,26 +197,20 @@ async def health_check():
 async def list_samples():
     result = []
     for s in SAMPLE_REGISTRY:
-        text = _load_sample_text(s.filename)
-        result.append({**s.model_dump(), "raw_text": text[:200] + "..." if len(text) > 200 else text})
+        sample_bytes = _load_sample_bytes(s.filename)
+        preview = sample_bytes.decode("utf-8", errors="replace") if sample_bytes else ""
+        result.append({**s.model_dump(), "raw_text": preview[:200] + "..." if len(preview) > 200 else preview})
     return result
 
-@app.post("/api/process-sample/{sample_id}")
+@app.post("/api/samples/{sample_id}")
 async def process_sample(sample_id: str):
     match = next((s for s in SAMPLE_REGISTRY if s.id == sample_id), None)
     if not match:
         raise HTTPException(status_code=404, detail=f"Sample '{sample_id}' not found.")
-    raw_text = _load_sample_text(match.filename)
-    if not raw_text:
+    file_bytes = _load_sample_bytes(match.filename)
+    if not file_bytes:
         raise HTTPException(status_code=500, detail=f"Sample file '{match.filename}' could not be read.")
-    return _process_text(
-        raw_text=raw_text,
-        filename=match.filename,
-        file_type="text",
-        method="sample_text",
-        page_count=1,
-        is_scanned=False,
-    )
+    return process_document(file_bytes, match.filename)
 
 # ---------------------------------------------------------------------------
 # File upload + process
@@ -184,55 +220,7 @@ async def process_file(file: UploadFile = File(...)):
     try:
         file_bytes = await file.read()
         filename = file.filename or "upload"
-
-        doc_type, mime = detect_document_type(filename, file_bytes)
-
-        if doc_type == "unknown":
-            raise HTTPException(
-                status_code=400,
-                detail=f"Unsupported file type. Please upload PDF, DOCX, PNG, or JPEG."
-            )
-
-        if len(file_bytes) > 20 * 1024 * 1024:  # 20 MB limit
-            raise HTTPException(status_code=400, detail="File too large. Maximum 20 MB allowed.")
-
-        is_scanned = False
-        page_count = 1
-
-        if doc_type == "pdf":
-            raw_text, page_count, is_scanned = extract_text_from_pdf(file_bytes)
-            method = "pdf_parser"
-        elif doc_type == "docx":
-            raw_text = extract_text_from_docx(file_bytes)
-            method = "docx_parser"
-        elif doc_type == "text":
-            raw_text = file_bytes.decode("utf-8", errors="replace")
-            method = "text_reader"
-        elif doc_type == "image":
-            # OCR branch — try pytesseract if available
-            try:
-                import pytesseract
-                from PIL import Image
-                image = Image.open(io.BytesIO(file_bytes))
-                raw_text = pytesseract.image_to_string(image)
-                method = "tesseract_ocr"
-                is_scanned = True
-            except ImportError:
-                raise HTTPException(
-                    status_code=501,
-                    detail="Tesseract/Pillow not installed. Cannot process image files."
-                )
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported document type.")
-
-        return _process_text(
-            raw_text=raw_text,
-            filename=filename,
-            file_type=doc_type,
-            method=method,
-            page_count=page_count,
-            is_scanned=is_scanned,
-        )
+        return process_document(file_bytes, filename)
 
     except HTTPException:
         raise

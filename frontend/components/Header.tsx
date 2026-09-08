@@ -26,7 +26,7 @@ export default function Header({ isMock, aiProvider }: { isMock: boolean; aiProv
               Experience Letter Extractor
             </h1>
             <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-              AI-powered document analysis
+              FastAPI document analysis
             </p>
           </div>
         </div>

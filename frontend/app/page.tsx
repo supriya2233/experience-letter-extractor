@@ -49,7 +49,7 @@ export default function Home() {
 
       <footer style={{ borderTop: '1px solid var(--border)', padding: '20px 24px', textAlign: 'center' }}>
         <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-          Experience Letter Extractor · Powered by FastAPI + Next.js · Mock AI Mode by default · Add API keys for real extraction
+          Experience Letter Extractor · FastAPI document processing · Mock AI Mode
         </p>
       </footer>
     </div>
