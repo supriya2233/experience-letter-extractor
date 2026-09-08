@@ -43,6 +43,34 @@ def calculate_duration(start_iso: Optional[str], end_iso: Optional[str]) -> Opti
     except Exception:
         return None
 
+
+def confidence_score(
+    value: Optional[str],
+    *,
+    explicit: bool = False,
+    normalized: bool = False,
+    corroborated: bool = False,
+    fallback: bool = False,
+) -> int:
+    """Estimate field certainty from observable extraction evidence.
+
+    This is a heuristic score, not a calibrated probability. Explicit source
+    wording, normalized values, and independent supporting evidence increase
+    the score; fallback-only matches are intentionally lower.
+    """
+    if not value or not value.strip():
+        return 0
+    score = 60
+    if explicit:
+        score += 15
+    if normalized:
+        score += 10
+    if corroborated:
+        score += 10
+    if fallback:
+        score -= 15
+    return max(0, min(100, score))
+
 class MockAIProvider(AIExtractionProvider):
     def extract(self, text: str) -> Tuple[ExperienceLetterData, Dict[str, Any]]:
         lower_text = text.lower()
@@ -53,6 +81,8 @@ class MockAIProvider(AIExtractionProvider):
             emp_name = name_match.group(1).strip()
             
         company_name = None
+        company_explicit = False
+        company_fallback = False
         comp_match = re.search(
             r'(?:employed with|worked with|employed by|worked for)\s+'
             r'(.+?)\s+(?:as|between|from)\b',
@@ -63,10 +93,12 @@ class MockAIProvider(AIExtractionProvider):
             comp_match = re.search(r'(?:organization\s+|our organization\s+)\s*([A-Z0-9][A-Za-z0-9\s.,&-]+?(?:Ltd|Limited|Inc|Corporation|Corp|Labs|Technologies|Solutions|Services))', text, re.IGNORECASE)
         if comp_match:
             company_name = ' '.join(comp_match.group(1).split()).strip(' ,.')
+            company_explicit = True
         if not company_name or company_name.lower() == 'our organization':
             headings = re.findall(r'(?m)^\s*([A-Z][A-Z0-9 &.-]{4,})\s*$', text)
             excluded = {'EXPERIENCE LETTER', 'EXPERIENCE CERTIFICATE', 'EMPLOYMENT CERTIFICATE', 'TO WHOMSOEVER IT MAY CONCERN'}
             company_name = next((heading.title() for heading in headings if heading not in excluded), company_name)
+            company_fallback = bool(company_name)
             
         designation = None
         desig_match = re.search(r'(?:as a|as an|served as|role of|position of|held the position of)\s+(?:an?\s+)?([A-Za-z\s]+?(?:Engineer|Developer|Analyst|Manager|Consultant|Specialist|Lead|Director|Associate))', text, re.IGNORECASE)
@@ -81,6 +113,7 @@ class MockAIProvider(AIExtractionProvider):
             last_working_date = parse_date_to_iso(date_range_match.group(2))
 
         duration = calculate_duration(joining_date, last_working_date)
+        duration_calculated = bool(duration)
         if not duration:
             dur_match = re.search(r'((?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+years?(?:\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+months?)?|approximately\s+(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s+years?)', text, re.IGNORECASE)
             if dur_match:
@@ -100,16 +133,21 @@ class MockAIProvider(AIExtractionProvider):
         emp_type = 'Full-time' if 'full-time' in lower_text else ('Part-time' if 'part-time' in lower_text else None)
 
         scores = {
-            'employee_name': 85 if emp_name else 0,
-            'company_name': 85 if company_name else 0,
-            'designation': 80 if designation else 0,
-            'employment_type': 75 if emp_type else 0,
-            'joining_date': 85 if joining_date else 0,
-            'last_working_date': 85 if last_working_date else 0,
-            'employment_duration': 80 if duration else 0,
-            'letter_issue_date': 85 if letter_issue_date else 0,
-            'signatory_name': 85 if signatory_name else 0,
-            'signatory_designation': 80 if signatory_designation else 0,
+            'employee_name': confidence_score(emp_name, explicit=bool(name_match), corroborated=bool(emp_name and company_name)),
+            'company_name': confidence_score(company_name, explicit=company_explicit, corroborated=bool(company_name and designation), fallback=company_fallback),
+            'designation': confidence_score(designation, explicit=bool(desig_match), corroborated=bool(designation and (joining_date or last_working_date))),
+            'employment_type': confidence_score(emp_type, explicit=emp_type is not None),
+            'joining_date': confidence_score(joining_date, explicit=bool(date_range_match), normalized=bool(joining_date), corroborated=bool(last_working_date)),
+            'last_working_date': confidence_score(last_working_date, explicit=bool(date_range_match), normalized=bool(last_working_date), corroborated=bool(joining_date)),
+            'employment_duration': confidence_score(
+                duration,
+                explicit=not duration_calculated,
+                normalized=duration_calculated,
+                corroborated=duration_calculated,
+            ),
+            'letter_issue_date': confidence_score(letter_issue_date, explicit=bool(issue_match), normalized=bool(letter_issue_date)),
+            'signatory_name': confidence_score(signatory_name, explicit=bool(signatory_match), corroborated=bool(signatory_designation)),
+            'signatory_designation': confidence_score(signatory_designation, explicit=bool(signatory_match), corroborated=bool(signatory_name)),
         }
 
         data = ExperienceLetterData(
@@ -125,7 +163,7 @@ class MockAIProvider(AIExtractionProvider):
             signatory_name=signatory_name,
             signatory_designation=signatory_designation,
             confidence_scores=scores,
-            confidence_note='Estimated extraction confidence (Generic regex heuristics).',
+            confidence_note='Evidence-based heuristic confidence from explicit wording, normalization, and corroborating fields; not a calibrated probability.',
             processing_method='Mock AI Mode (generic heuristic parsing)',
             validation_status='Pending Review'
         )
