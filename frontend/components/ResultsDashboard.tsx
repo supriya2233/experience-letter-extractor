@@ -44,6 +44,22 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
   const [approvalMsg, setApprovalMsg] = useState('');
 
   const { document: doc, extracted_data: data, validation, is_mock, ai_provider, raw_ai_json, processing_time_ms } = result;
+  const jsonText = JSON.stringify(raw_ai_json ?? data, null, 2);
+
+  const handleDownloadJson = () => {
+    const blob = new Blob([jsonText], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    const baseName = doc.filename.replace(/\.[^/.]+$/, '').replace(/[^a-z0-9-_]+/gi, '-');
+    link.href = url;
+    link.download = `${baseName || 'extraction-result'}.json`;
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, 0);
+  };
 
   const handleApprove = async () => {
     setApproving(true);
@@ -254,14 +270,24 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
         <div className="glass-card animate-fade-in" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
             <h3 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-secondary)' }}>Raw AI JSON Output</h3>
-            <button
-              id="copy-json-btn"
-              className="btn-secondary"
-              style={{ padding: '4px 12px', fontSize: '0.75rem' }}
-              onClick={() => navigator.clipboard.writeText(JSON.stringify(raw_ai_json ?? data, null, 2))}
-            >
-              Copy JSON
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                id="copy-json-btn"
+                className="btn-secondary"
+                style={{ padding: '4px 12px', fontSize: '0.75rem' }}
+                onClick={() => navigator.clipboard.writeText(jsonText)}
+              >
+                Copy JSON
+              </button>
+              <button
+                id="download-json-btn"
+                className="btn-secondary"
+                style={{ padding: '4px 12px', fontSize: '0.75rem' }}
+                onClick={handleDownloadJson}
+              >
+                Download JSON
+              </button>
+            </div>
           </div>
           <pre style={{
             margin: 0, padding: '16px', background: 'var(--bg-primary)', borderRadius: 10,
@@ -270,7 +296,7 @@ export default function ResultsDashboard({ result, onReset }: ResultsDashboardPr
             border: '1px solid var(--border)', maxHeight: 500, overflowY: 'auto',
             fontFamily: "'JetBrains Mono', monospace",
           }}>
-            {JSON.stringify(raw_ai_json ?? data, null, 2)}
+            {jsonText}
           </pre>
         </div>
       )}
