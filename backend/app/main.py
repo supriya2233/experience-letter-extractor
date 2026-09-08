@@ -93,6 +93,22 @@ SAMPLE_REGISTRY = [
         expected_type="Experience Certificate",
         raw_text=""
     ),
+    SampleDocument(
+        id="sample7-many-dates",
+        title="Many Dates Experience Letter",
+        filename="sample7_many_dates.pdf",
+        description="A three-page letter with appraisal, promotion, project, leave, and issue dates.",
+        expected_type="Experience Letter",
+        raw_text=""
+    ),
+    SampleDocument(
+        id="sample8-many-dates-certificate",
+        title="Many Dates Employment Certificate",
+        filename="sample8_many_dates_certificate.pdf",
+        description="A three-page certificate with multiple historical and employment dates.",
+        expected_type="Experience Certificate",
+        raw_text=""
+    ),
 ]
 
 def _load_sample_bytes(filename: str) -> bytes:

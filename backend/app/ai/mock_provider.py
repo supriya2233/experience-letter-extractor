@@ -119,12 +119,12 @@ class MockAIProvider(AIExtractionProvider):
             if dur_match:
                 duration = dur_match.group(1).strip()
 
-        issue_match = re.search(r'(?:date|issued on|issue date)\s*:\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
+        issue_match = re.search(r'(?:letter\s+)?(?:date|issued on|issue date)\s*:?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
         letter_issue_date = parse_date_to_iso(issue_match.group(1)) if issue_match else None
 
         signatory_match = re.search(
             r'(?:^|\n)\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*\n\s*'
-            r'((?:HR|Human Resources)\s+[A-Za-z ]+|[A-Z][a-z]+\s+(?:Manager|Director|Lead))',
+            r'((?:(?:HR|Human Resources|People Operations)\s+[A-Za-z ]+|[A-Z][a-z]+\s+(?:Manager|Director|Lead)))',
             text,
         )
         signatory_name = signatory_match.group(1).strip() if signatory_match else None

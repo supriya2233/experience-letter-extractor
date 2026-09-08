@@ -57,6 +57,68 @@ We wish her success in her future career.
 
 Innovate Labs'''
 
+sample7_pages = [
+    '''NORTHSTAR DIGITAL SERVICES
+EMPLOYEE RECORD SUMMARY
+Document prepared: February 6, 2026
+Employee ID issued: March 2, 2021
+Last appraisal: December 15, 2025
+
+This internal summary contains historical dates for reference.
+The employee joined Northstar Digital Services on May 18, 2020.
+''',
+    '''EXPERIENCE LETTER
+
+This is to certify that Ms. Kavya Menon was employed with
+Northstar Digital Services as a Data Engineer from May 18, 2020
+to November 29, 2025.
+
+She was promoted to Senior Data Engineer on January 1, 2023.
+She completed the Atlas migration project on June 30, 2024.
+Her approved leave period was from August 5, 2024 to August 20, 2024.
+''',
+    '''During her employment, Kavya received recognition on March 10, 2022
+and completed the annual security training on October 12, 2025.
+
+We appreciate her contribution and wish her success.
+
+For Northstar Digital Services
+
+Rohan Mehta
+People Operations Manager
+
+Letter issued on December 4, 2025''',
+]
+
+sample8_pages = [
+    '''ORBITAL SYSTEMS PRIVATE LIMITED
+EMPLOYMENT CERTIFICATE
+
+Reference number: OS-2026-041
+Certificate created: April 15, 2026
+''',
+    '''This is to confirm that Mr. Elias Joseph worked with our organization
+between February 3, 2019 and March 28, 2026 as a Cloud Consultant.
+
+He originally joined the infrastructure team on February 3, 2019.
+He moved to the cloud practice on July 1, 2021 and was promoted on
+January 1, 2024. His project assignment ended on March 15, 2026,
+but his last working day was March 28, 2026.
+''',
+    '''Additional timeline details:
+Security certification: May 9, 2020
+Performance review: November 22, 2022
+Client appreciation: August 14, 2025
+Final asset return: April 2, 2026
+
+Elias was a full-time employee.
+
+Issued on: April 15, 2026
+
+Meera Rao
+Human Resources Director''',
+]
+
 with open(os.path.join(SAMPLES_DIR, 'sample1.txt'), 'w', encoding='utf-8') as f:
     f.write(sample1_text)
 
@@ -85,5 +147,16 @@ page2 = pdf_doc2.new_page()
 page2.insert_text((50, 72), sample2_text, fontsize=11)
 pdf_doc2.save(os.path.join(SAMPLES_DIR, 'sample2_different_style.pdf'))
 pdf_doc2.close()
+
+def create_multipage_pdf(filename, pages):
+    document = fitz.open()
+    for page_text in pages:
+        page = document.new_page()
+        page.insert_textbox((54, 54, 558, 738), page_text, fontsize=11, lineheight=1.35)
+    document.save(os.path.join(SAMPLES_DIR, filename))
+    document.close()
+
+create_multipage_pdf('sample7_many_dates.pdf', sample7_pages)
+create_multipage_pdf('sample8_many_dates_certificate.pdf', sample8_pages)
 
 print('Samples generated successfully in:', SAMPLES_DIR)
