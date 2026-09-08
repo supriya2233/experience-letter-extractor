@@ -8,7 +8,7 @@ interface UploadCardProps {
   onProcessing: (val: boolean) => void;
 }
 
-const ACCEPTED = ['.pdf', '.docx', '.txt'];
+const ACCEPTED = ['.pdf', '.docx', '.txt', '.png', '.jpg', '.jpeg'];
 const MAX_MB = 20;
 
 function formatBytes(b: number) {
@@ -27,10 +27,11 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
   const [showSamples, setShowSamples] = useState(false);
   const [loadingSample, setLoadingSample] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (f: File): string => {
     const ext = '.' + f.name.split('.').pop()?.toLowerCase();
-    if (!ACCEPTED.includes(ext)) return `Unsupported type "${ext}". Use PDF, DOCX, or TXT.`;
+    if (!ACCEPTED.includes(ext)) return `Unsupported type "${ext}". Use PDF, DOCX, TXT, PNG, or JPEG.`;
     if (f.size > MAX_MB * 1024 * 1024) return `File too large (${formatBytes(f.size)}). Max ${MAX_MB} MB.`;
     return '';
   };
@@ -107,7 +108,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
           Extract Experience Letter Data
         </h2>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
-          Upload a PDF, DOCX, or text file — our AI extracts and validates all fields instantly.
+          Upload a PDF, DOCX, text file, or image — our AI extracts and validates all fields instantly.
         </p>
       </div>
 
@@ -128,6 +129,14 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
           onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }}
           id="file-upload-input"
         />
+        <input
+          ref={imageInputRef}
+          type="file"
+          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+          style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }}
+          id="ocr-image-input"
+        />
 
         <div style={{ fontSize: 40, marginBottom: 12 }}>
           {dragOver ? '📂' : '☁️'}
@@ -136,7 +145,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
           {dragOver ? 'Drop your file here' : 'Drag & drop your file here'}
         </p>
         <p style={{ margin: '0 0 20px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-          or click to browse — PDF, DOCX, TXT · Max {MAX_MB} MB
+          or click to browse — PDF, DOCX, TXT, PNG, JPEG · Max {MAX_MB} MB
         </p>
 
         <button
@@ -151,6 +160,14 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
             <line x1="12" y1="3" x2="12" y2="15"/>
           </svg>
           Choose File
+        </button>
+        <button
+          id="ocr-upload-btn"
+          className="btn-secondary"
+          onClick={e => { e.stopPropagation(); imageInputRef.current?.click(); }}
+          style={{ marginTop: 10 }}
+        >
+          🖼️ Upload Image for OCR
         </button>
       </div>
 
@@ -171,7 +188,7 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
       {file && (
         <div className="glass-card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{ fontSize: 24 }}>
-            {file.name.endsWith('.pdf') ? '📄' : file.name.endsWith('.docx') ? '📝' : '📃'}
+            {file.name.endsWith('.pdf') ? '📄' : file.name.endsWith('.docx') ? '📝' : file.name.match(/\.(png|jpe?g)$/i) ? '🖼️' : '📃'}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
@@ -251,9 +268,10 @@ export default function UploadCard({ onResult, onProcessing }: UploadCardProps) 
 
       {/* Accepted types */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20, justifyContent: 'center' }}>
-        {['PDF', 'DOCX', 'TXT'].map(t => (
+        {['PDF', 'DOCX', 'TXT', 'PNG', 'JPEG'].map(t => (
           <span key={t} className="badge badge-blue">{t}</span>
         ))}
+        <span className="badge badge-green">OCR for Images</span>
         <span className="badge badge-green">AI Extraction</span>
       </div>
     </div>

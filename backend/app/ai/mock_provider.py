@@ -63,9 +63,13 @@ class MockAIProvider(AIExtractionProvider):
             comp_match = re.search(r'(?:organization\s+|our organization\s+)\s*([A-Z0-9][A-Za-z0-9\s.,&-]+?(?:Ltd|Limited|Inc|Corporation|Corp|Labs|Technologies|Solutions|Services))', text, re.IGNORECASE)
         if comp_match:
             company_name = ' '.join(comp_match.group(1).split()).strip(' ,.')
+        if not company_name or company_name.lower() == 'our organization':
+            headings = re.findall(r'(?m)^\s*([A-Z][A-Z0-9 &.-]{4,})\s*$', text)
+            excluded = {'EXPERIENCE LETTER', 'EXPERIENCE CERTIFICATE', 'EMPLOYMENT CERTIFICATE', 'TO WHOMSOEVER IT MAY CONCERN'}
+            company_name = next((heading.title() for heading in headings if heading not in excluded), company_name)
             
         designation = None
-        desig_match = re.search(r'(?:as a|as an|served as|role of|position of|held the position of)\s+([A-Za-z\s]+?(?:Engineer|Developer|Analyst|Manager|Consultant|Specialist|Lead|Director|Associate))', text, re.IGNORECASE)
+        desig_match = re.search(r'(?:as a|as an|served as|role of|position of|held the position of)\s+(?:an?\s+)?([A-Za-z\s]+?(?:Engineer|Developer|Analyst|Manager|Consultant|Specialist|Lead|Director|Associate))', text, re.IGNORECASE)
         if desig_match:
             designation = desig_match.group(1).strip()
 

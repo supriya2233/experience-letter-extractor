@@ -69,6 +69,30 @@ SAMPLE_REGISTRY = [
         expected_type="Experience Letter (Incomplete)",
         raw_text=""
     ),
+    SampleDocument(
+        id="sample4-pdf",
+        title="Alternate Wording Certificate",
+        filename="sample4_alternate.pdf",
+        description="Uses 'we certify', 'employed from', and 'held the position of' phrasing.",
+        expected_type="Experience Certificate",
+        raw_text=""
+    ),
+    SampleDocument(
+        id="sample5-pdf",
+        title="Incomplete PDF Letter",
+        filename="sample5_incomplete.pdf",
+        description="A PDF with real employee, company, role, and duration but missing dates and signatory.",
+        expected_type="Experience Letter (Incomplete)",
+        raw_text=""
+    ),
+    SampleDocument(
+        id="sample6-pdf",
+        title="Employment Certificate",
+        filename="sample6_certificate.pdf",
+        description="A complete certificate using 'worked with our organization' and 'served as' wording.",
+        expected_type="Experience Certificate",
+        raw_text=""
+    ),
 ]
 
 def _load_sample_bytes(filename: str) -> bytes:
@@ -134,6 +158,8 @@ def process_document(file_bytes: bytes, filename: str) -> ProcessingResponse:
             is_scanned = True
         except ImportError:
             raise HTTPException(status_code=501, detail="Tesseract/Pillow not installed. Cannot process image files.")
+        except (FileNotFoundError, pytesseract.TesseractNotFoundError):
+            raise HTTPException(status_code=501, detail="Tesseract OCR is not installed or not available on PATH. Install Tesseract and restart the backend.")
     else:
         raise HTTPException(status_code=400, detail="Unsupported document type.")
 
