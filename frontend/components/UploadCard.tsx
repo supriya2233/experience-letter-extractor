@@ -1,229 +1,274 @@
 'use client';
-
-import React, { useState, useRef } from 'react';
-import { UploadCloud, File, CheckCircle2, AlertTriangle, ArrowRight, BookOpen, RefreshCw } from 'lucide-react';
-import { SampleDocument } from '../types';
+import { useState, useRef, useCallback } from 'react';
+import { SampleDocument } from '../types/api';
 
 interface UploadCardProps {
-  onFileUpload: (file: File) => void;
-  onSampleSelect: (sampleId: string) => void;
-  samples: SampleDocument[];
-  isProcessing: boolean;
-  currentProgress: number;
+  onResult: (data: unknown) => void;
+  onProcessing: (val: boolean) => void;
 }
 
-const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.doc', '.png', '.jpg', '.jpeg', '.txt'];
-const MAX_SIZE_MB = 20;
+const ACCEPTED = ['.pdf', '.docx', '.png', '.jpg', '.jpeg'];
+const MAX_MB = 20;
 
-export const UploadCard: React.FC<UploadCardProps> = ({
-  onFileUpload,
-  onSampleSelect,
-  samples,
-  isProcessing,
-  currentProgress,
-}) => {
-  const [dragActive, setDragActive] = useState(false);
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+function formatBytes(b: number) {
+  if (b < 1024) return `${b} B`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
+  return `${(b / (1024 * 1024)).toFixed(2)} MB`;
+}
 
-  const validateAndHandleFile = (file: File) => {
-    setErrorMsg(null);
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase();
-    if (!ALLOWED_EXTENSIONS.includes(ext)) {
-      setErrorMsg(`Unsupported file format '${ext}'. Please upload PDF, DOCX, PNG, JPG, or TXT.`);
-      return;
-    }
-    if (file.size > MAX_SIZE_MB * 1024 * 1024) {
-      setErrorMsg(`File size exceeds limit (${MAX_SIZE_MB}MB).`);
-      return;
-    }
-    setSelectedFile(file);
-    onFileUpload(file);
+export default function UploadCard({ onResult, onProcessing }: UploadCardProps) {
+  const [dragOver, setDragOver] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState(0);
+  const [error, setError] = useState('');
+  const [samples, setSamples] = useState<SampleDocument[]>([]);
+  const [samplesLoaded, setSamplesLoaded] = useState(false);
+  const [showSamples, setShowSamples] = useState(false);
+  const [loadingSample, setLoadingSample] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const validateFile = (f: File): string => {
+    const ext = '.' + f.name.split('.').pop()?.toLowerCase();
+    if (!ACCEPTED.includes(ext)) return `Unsupported type "${ext}". Use PDF, DOCX, PNG, or JPEG.`;
+    if (f.size > MAX_MB * 1024 * 1024) return `File too large (${formatBytes(f.size)}). Max ${MAX_MB} MB.`;
+    return '';
   };
 
-  const handleDrag = (e: React.DragEvent) => {
+  const processFile = useCallback(async (f: File) => {
+    const err = validateFile(f);
+    if (err) { setError(err); return; }
+    setFile(f);
+    setError('');
+    setProgress(0);
+    onProcessing(true);
+
+    // Simulate progress until response
+    const interval = setInterval(() => {
+      setProgress(p => Math.min(p + Math.random() * 12, 88));
+    }, 250);
+
+    try {
+      const form = new FormData();
+      form.append('file', f);
+      const res = await fetch('http://localhost:8000/api/process', { method: 'POST', body: form });
+      clearInterval(interval);
+      setProgress(100);
+      if (!res.ok) {
+        const detail = await res.json();
+        throw new Error(detail.detail || 'Processing failed');
+      }
+      const data = await res.json();
+      onResult(data);
+    } catch (e: unknown) {
+      clearInterval(interval);
+      setError((e as Error).message || 'Upload failed. Is the backend running?');
+      setProgress(0);
+    } finally {
+      onProcessing(false);
+    }
+  }, [onProcessing, onResult]);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
+    setDragOver(false);
+    const f = e.dataTransfer.files[0];
+    if (f) processFile(f);
+  }, [processFile]);
+
+  const loadSamples = async () => {
+    if (samplesLoaded) { setShowSamples(s => !s); return; }
+    try {
+      const res = await fetch('http://localhost:8000/api/samples');
+      const data = await res.json();
+      setSamples(data);
+      setSamplesLoaded(true);
+      setShowSamples(true);
+    } catch { setError('Could not load samples. Is the backend running?'); }
   };
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      validateAndHandleFile(e.dataTransfer.files[0]);
+  const processSample = async (id: string) => {
+    setLoadingSample(id);
+    setError('');
+    onProcessing(true);
+    try {
+      const res = await fetch(`http://localhost:8000/api/process-sample/${id}`, { method: 'POST' });
+      if (!res.ok) throw new Error('Sample processing failed');
+      const data = await res.json();
+      onResult(data);
+      setShowSamples(false);
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    } finally {
+      setLoadingSample('');
+      onProcessing(false);
     }
-  };
-
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      validateAndHandleFile(e.target.files[0]);
-    }
-  };
-
-  const formatFileSize = (bytes: number) => {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-      {/* Upload Box */}
-      <div className="lg:col-span-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
-              <UploadCloud className="h-5 w-5 text-blue-600" />
-              Upload Experience Letter
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Supports digital PDFs, scanned documents, Word files, and raster images
-            </p>
-          </div>
-          <span className="text-xs font-medium text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md">
-            Max 20MB
-          </span>
-        </div>
-
-        {/* Drop Zone */}
-        <div
-          onDragEnter={handleDrag}
-          onDragLeave={handleDrag}
-          onDragOver={handleDrag}
-          onDrop={handleDrop}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center min-h-[220px] ${
-            dragActive
-              ? 'border-blue-500 bg-blue-50/50 dark:bg-blue-950/20 scale-[0.99]'
-              : 'border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 bg-slate-50/50 dark:bg-slate-800/30'
-          }`}
-        >
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.doc,.png,.jpg,.jpeg,.txt"
-            onChange={handleInputChange}
-            className="hidden"
-          />
-
-          <div className="h-14 w-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3 shadow-inner">
-            <UploadCloud className="h-7 w-7 animate-pulse" />
-          </div>
-
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            Drag & Drop Experience Letter here, or{' '}
-            <span className="text-blue-600 dark:text-blue-400 underline underline-offset-2">browse files</span>
-          </p>
-          <p className="text-xs text-slate-400 dark:text-slate-500 mt-1.5">
-            Accepts PDF (digital or scanned), DOCX, PNG, JPG, JPEG, TXT
-          </p>
-
-          {/* Supported format tags */}
-          <div className="flex flex-wrap gap-1.5 mt-4 justify-center">
-            {['PDF', 'DOCX', 'PNG', 'JPG', 'TXT'].map((ext) => (
-              <span
-                key={ext}
-                className="text-[11px] font-mono px-2 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300"
-              >
-                .{ext.toLowerCase()}
-              </span>
-            ))}
-          </div>
-        </div>
-
-        {/* Selected file preview & progress */}
-        {selectedFile && (
-          <div className="mt-4 p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/80 flex flex-col gap-2">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <File className="h-4 w-4 text-blue-600 shrink-0" />
-                <span className="font-semibold text-slate-800 dark:text-slate-200 truncate">
-                  {selectedFile.name}
-                </span>
-                <span className="text-slate-400">({formatFileSize(selectedFile.size)})</span>
-              </div>
-              <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
-                {isProcessing ? `${currentProgress}%` : 'Uploaded'}
-              </span>
-            </div>
-
-            {/* Progress bar */}
-            {isProcessing && (
-              <div className="w-full bg-slate-200 dark:bg-slate-700 rounded-full h-1.5 overflow-hidden">
-                <div
-                  className="bg-gradient-to-r from-blue-500 to-indigo-600 h-1.5 rounded-full transition-all duration-300"
-                  style={{ width: `${currentProgress}%` }}
-                />
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Error notice */}
-        {errorMsg && (
-          <div className="mt-3 p-3 rounded-xl bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-red-700 dark:text-red-300 text-xs flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0 text-red-500" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
+    <div className="animate-fade-in" style={{ maxWidth: 640, margin: '0 auto' }}>
+      {/* Hero section */}
+      <div style={{ textAlign: 'center', marginBottom: 32 }}>
+        <div style={{
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          width: 72, height: 72, borderRadius: 20,
+          background: 'var(--gradient-blue)',
+          fontSize: 32, marginBottom: 20,
+          boxShadow: '0 0 40px rgba(59,130,246,0.3)',
+        }}>📋</div>
+        <h2 style={{ margin: '0 0 8px', fontSize: '1.75rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+          Extract Experience Letter Data
+        </h2>
+        <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: 1.6 }}>
+          Upload a PDF, DOCX, or image — our AI extracts and validates all fields instantly.
+        </p>
       </div>
 
-      {/* Preloaded Samples Card */}
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex flex-col justify-between">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <BookOpen className="h-4 w-4 text-indigo-600" />
-            <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-              Instant Demo: Try a Sample
-            </h3>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">
-            Test the full intelligent document processing pipeline immediately without uploading a file.
-          </p>
+      {/* Drop zone */}
+      <div
+        className={`drop-zone ${dragOver ? 'drag-over' : ''}`}
+        onClick={() => inputRef.current?.click()}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        style={{ padding: '48px 32px', textAlign: 'center', position: 'relative', marginBottom: 16 }}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED.join(',')}
+          style={{ display: 'none' }}
+          onChange={e => { const f = e.target.files?.[0]; if (f) processFile(f); }}
+          id="file-upload-input"
+        />
 
-          <div className="space-y-2.5">
-            {samples.map((sample) => (
-              <button
-                key={sample.id}
-                type="button"
-                disabled={isProcessing}
-                onClick={() => onSampleSelect(sample.id)}
-                className="w-full text-left p-3 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-600 bg-slate-50/70 dark:bg-slate-800/40 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-all duration-150 group"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400">
-                    {sample.title}
-                  </span>
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 transition-transform group-hover:translate-x-0.5" />
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2">
-                  {sample.description}
-                </p>
-                <div className="flex items-center gap-1.5 mt-2">
-                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300">
-                    {sample.expected_type}
-                  </span>
-                </div>
-              </button>
-            ))}
+        <div style={{ fontSize: 40, marginBottom: 12 }}>
+          {dragOver ? '📂' : '☁️'}
+        </div>
+        <p style={{ margin: '0 0 4px', fontWeight: 600, color: 'var(--text-primary)' }}>
+          {dragOver ? 'Drop your file here' : 'Drag & drop your file here'}
+        </p>
+        <p style={{ margin: '0 0 20px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+          or click to browse — PDF, DOCX, PNG, JPEG · Max {MAX_MB} MB
+        </p>
+
+        <button
+          id="choose-file-btn"
+          className="btn-primary"
+          onClick={e => { e.stopPropagation(); inputRef.current?.click(); }}
+          style={{ pointerEvents: 'none' }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          Choose File
+        </button>
+      </div>
+
+      {/* Progress bar */}
+      {progress > 0 && progress < 100 && (
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+            <span style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Processing…</span>
+            <span style={{ fontSize: '0.8rem', color: 'var(--accent-blue)', fontWeight: 600 }}>{Math.round(progress)}%</span>
+          </div>
+          <div className="confidence-bar">
+            <div className="confidence-fill" style={{ width: `${progress}%`, background: 'var(--gradient-blue)' }} />
           </div>
         </div>
+      )}
 
-        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400 flex items-center justify-between">
-          <span>Rule & Semantic Extraction</span>
-          <span className="flex items-center gap-1 text-emerald-600 font-medium">
-            <CheckCircle2 className="h-3 w-3" /> Ready
-          </span>
+      {/* Uploaded file info */}
+      {file && (
+        <div className="glass-card" style={{ padding: '12px 16px', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ fontSize: 24 }}>
+            {file.name.endsWith('.pdf') ? '📄' : file.name.endsWith('.docx') ? '📝' : '🖼️'}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p style={{ margin: 0, fontWeight: 500, fontSize: '0.875rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{file.name}</p>
+            <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatBytes(file.size)}</p>
+          </div>
+          {progress === 100 && <span className="badge badge-green">✓ Done</span>}
         </div>
+      )}
+
+      {/* Error */}
+      {error && (
+        <div style={{
+          background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+          borderRadius: 10, padding: '12px 16px', marginBottom: 16,
+          color: '#f87171', fontSize: '0.875rem', display: 'flex', gap: 8,
+        }}>
+          <span>⚠️</span><span>{error}</span>
+        </div>
+      )}
+
+      {/* Divider */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '20px 0' }}>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+        <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>or try a sample</span>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }} />
+      </div>
+
+      {/* Sample selector */}
+      <button
+        id="load-samples-btn"
+        className="btn-secondary"
+        onClick={loadSamples}
+        style={{ width: '100%', marginBottom: showSamples ? 12 : 0 }}
+      >
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="3" y="3" width="18" height="18" rx="2"/>
+          <path d="M3 9h18M9 21V9"/>
+        </svg>
+        {showSamples ? 'Hide Samples' : 'Try a Sample Document'}
+      </button>
+
+      {showSamples && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} className="animate-fade-in">
+          {samples.map(s => (
+            <button
+              key={s.id}
+              id={`sample-btn-${s.id}`}
+              onClick={() => processSample(s.id)}
+              disabled={!!loadingSample}
+              style={{
+                background: loadingSample === s.id ? 'rgba(59,130,246,0.1)' : 'var(--bg-card)',
+                border: '1px solid var(--border)',
+                borderRadius: 10,
+                padding: '14px 16px',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'all 0.2s',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 12,
+              }}
+              className="glass-card"
+            >
+              <div style={{ fontSize: 24 }}>📋</div>
+              <div style={{ flex: 1 }}>
+                <p style={{ margin: '0 0 2px', fontWeight: 600, color: 'var(--text-primary)', fontSize: '0.875rem' }}>{s.title}</p>
+                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.75rem' }}>{s.description}</p>
+              </div>
+              {loadingSample === s.id
+                ? <div className="animate-spin" style={{ width: 16, height: 16, border: '2px solid var(--border)', borderTopColor: 'var(--accent-blue)', borderRadius: '50%' }} />
+                : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><path d="m9 18 6-6-6-6"/></svg>
+              }
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Accepted types */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 20, justifyContent: 'center' }}>
+        {['PDF', 'DOCX', 'PNG', 'JPEG'].map(t => (
+          <span key={t} className="badge badge-blue">{t}</span>
+        ))}
+        <span className="badge badge-purple">OCR for Images</span>
+        <span className="badge badge-green">AI Extraction</span>
       </div>
     </div>
   );
-};
-
+}
