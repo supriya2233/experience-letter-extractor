@@ -119,6 +119,41 @@ Meera Rao
 Human Resources Director''',
 ]
 
+case_pages = {
+    'sample9_multiple_periods.pdf': [
+        'EMPLOYMENT HISTORY\nEmployee: Nisha Verma\n\nNisha worked at Meridian Labs from January 6, 2018 to June 30, 2020.\nShe rejoined Meridian Labs between September 1, 2020 and December 18, 2024.\nIssued on: January 5, 2025\n\nAmit Roy\nHR Manager',
+    ],
+    'sample10_current_employee.pdf': [
+        'CURRENT EMPLOYMENT LETTER\n\nThis is to confirm that Rahul Das joined BluePeak Systems on March 4, 2022.\nHe is currently employed as a Platform Engineer and remains an active full-time employee.\nLetter date: August 12, 2026\n\nNeha Singh\nPeople Operations Manager',
+    ],
+    'sample11_conflicting_dates.pdf': [
+        'EXPERIENCE LETTER\n\nThis certifies that Meera Thomas was employed with HarborWorks Ltd from April 10, 2021 to April 10, 2024.\nThe final separation record says last working day: March 28, 2024.\nIssued on: May 2, 2024\n\nVikram Rao\nHR Manager',
+    ],
+    'sample12_promotion_history.pdf': [
+        'EXPERIENCE CERTIFICATE\n\nMr. Omar Khan joined Vertex Consulting on February 14, 2019 as an Associate Consultant.\nHe was promoted to Consultant on July 1, 2021 and to Senior Consultant on October 1, 2023.\nHis employment ended on January 31, 2026.\nIssued on: February 6, 2026\n\nSara Ali\nHuman Resources Director',
+    ],
+    'sample13_labeled_fields.pdf': [
+        'EMPLOYMENT VERIFICATION\n\nEmployee Name: Elena Garcia\nCompany Name: Redwood Operations Inc.\nDesignation: Operations Specialist\nDate Joined: 15-Feb-2020\nLast Working Day: 31-Jan-2025\nLetter Issue Date: 10-Feb-2025\nEmployment Type: Full-time\n\nSigned by\nCarlos Mendez\nHR Manager',
+    ],
+    'sample14_header_footer_noise.pdf': [
+        'CONFIDENTIAL - PAGE 1 OF 2\nOrchid Finance Group\n\nThis is to certify that Ms. Tara Rao was employed by Orchid Finance Group as a Finance Analyst from June 2, 2020 to May 31, 2025.\n\nCONFIDENTIAL - Generated November 20, 2025',
+        'CONFIDENTIAL - PAGE 2 OF 2\nOrchid Finance Group\n\nTara completed a review on March 4, 2024 and a compliance course on September 9, 2024.\n\nIssued on: June 6, 2025\n\nDev Malik\nCompliance Manager\nCONFIDENTIAL - Generated November 20, 2025',
+    ],
+    'sample15_multiple_companies.pdf': [
+        'CAREER CERTIFICATE\n\nMr. Joseph Lee worked for Alpha Retail from January 2017 to December 2019.\nHe then worked with Beacon Commerce as a Product Manager from January 6, 2020 to March 15, 2025.\nThis certificate is issued by Beacon Commerce.\n\nIssued on: March 20, 2025\n\nLinda Wu\nHR Director',
+    ],
+    'sample16_missing_dates.pdf': [
+        'EXPERIENCE LETTER\n\nThis is to certify that Ms. Farah Noor was employed with Silverline Health as a Support Specialist.\nShe worked with the organization for several years and was a full-time employee.\n\nSilverline Health',
+    ],
+    'sample17_locale_dates.pdf': [
+        'EXPERIENCE CERTIFICATE\n\nThis confirms that Mr. Marco Rossi worked with Alpine Systems as a QA Engineer from 05/02/2021 to 31/01/2025.\nDate of issue: 05/02/2025\n\nGiulia Bianchi\nHR Manager',
+    ],
+    'sample18_duplicate_headers.pdf': [
+        'ACME TECHNOLOGIES - EXPERIENCE LETTER\nPAGE 1\n\nACME TECHNOLOGIES - EXPERIENCE LETTER\nThis certifies that Ms. Isha Patel was employed with Acme Technologies as a Software Tester from July 7, 2022 to February 28, 2026.',
+        'ACME TECHNOLOGIES - EXPERIENCE LETTER\nPAGE 2\n\nACME TECHNOLOGIES - EXPERIENCE LETTER\nShe completed an audit on January 11, 2025.\nIssued on: March 3, 2026\n\nArun Shah\nHR Lead',
+    ],
+}
+
 with open(os.path.join(SAMPLES_DIR, 'sample1.txt'), 'w', encoding='utf-8') as f:
     f.write(sample1_text)
 
@@ -158,5 +193,7 @@ def create_multipage_pdf(filename, pages):
 
 create_multipage_pdf('sample7_many_dates.pdf', sample7_pages)
 create_multipage_pdf('sample8_many_dates_certificate.pdf', sample8_pages)
+for filename, pages in case_pages.items():
+    create_multipage_pdf(filename, pages)
 
 print('Samples generated successfully in:', SAMPLES_DIR)

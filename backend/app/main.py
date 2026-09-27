@@ -109,6 +109,16 @@ SAMPLE_REGISTRY = [
         expected_type="Experience Certificate",
         raw_text=""
     ),
+    SampleDocument(id="sample9-multiple-periods", title="Multiple Employment Periods", filename="sample9_multiple_periods.pdf", description="Two separate employment periods at the same company.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample10-current-employee", title="Current Employee", filename="sample10_current_employee.pdf", description="An active employee with no last working date.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample11-conflicting-dates", title="Conflicting Dates", filename="sample11_conflicting_dates.pdf", description="Conflicting separation dates that should require review.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample12-promotion-history", title="Promotion History", filename="sample12_promotion_history.pdf", description="Multiple designations and promotion dates.", expected_type="Experience Certificate", raw_text=""),
+    SampleDocument(id="sample13-labeled-fields", title="Labeled Fields", filename="sample13_labeled_fields.pdf", description="Structured labels for every extracted field.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample14-header-footer-noise", title="Header and Footer Noise", filename="sample14_header_footer_noise.pdf", description="Repeated headers, footers, reviews, and compliance dates.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample15-multiple-companies", title="Multiple Companies", filename="sample15_multiple_companies.pdf", description="Career history with more than one employer.", expected_type="Experience Certificate", raw_text=""),
+    SampleDocument(id="sample16-missing-dates", title="Missing Dates", filename="sample16_missing_dates.pdf", description="Real identity and role but no explicit employment dates.", expected_type="Experience Letter", raw_text=""),
+    SampleDocument(id="sample17-locale-dates", title="Numeric Locale Dates", filename="sample17_locale_dates.pdf", description="Numeric day/month dates requiring locale-aware parsing.", expected_type="Experience Certificate", raw_text=""),
+    SampleDocument(id="sample18-duplicate-headers", title="Duplicate Headers", filename="sample18_duplicate_headers.pdf", description="Repeated page headers around the employment details.", expected_type="Experience Letter", raw_text=""),
 ]
 
 def _load_sample_bytes(filename: str) -> bytes:

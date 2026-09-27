@@ -9,9 +9,9 @@ def parse_date_to_iso(date_str: str) -> Optional[str]:
         return None
     cleaned = date_str.strip(' ,.')
     formats = [
-        '%B %d, %Y', '%B %d %Y', '%b %d, %Y', '%b %d %Y',
+        '%B %d, %Y', '%B %d %Y', '%b %d, %Y', '%b %d %Y', '%d-%b-%Y', '%d-%B-%Y',
         '%d %B %Y', '%d %b %Y', '%d-%m-%Y', '%d/%m/%Y',
-        '%Y-%m-%d', '%Y/%m/%d', '%B %Y', '%b %Y'
+        '%Y-%m-%d', '%Y/%m/%d', '%B %Y', '%b %Y', '%d/%m/%Y', '%m/%d/%Y'
     ]
     for fmt in formats:
         try:
@@ -76,7 +76,19 @@ class MockAIProvider(AIExtractionProvider):
         lower_text = text.lower()
         # Generic heuristic / regex fallback
         emp_name = None
-        name_match = re.search(r'(?:certify that|confirm that|we certify that)\s+(?:Mr\.|Ms\.|Mrs\.)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})', text)
+        name_match = re.search(r'(?:certify that|confirm that|we certify that)\s+(?:Mr\.|Ms\.|Mrs\.)?\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})', text)
+        if not name_match:
+            name_match = re.search(r'Employee Name\s*:\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})', text)
+        if not name_match:
+            name_match = re.search(r'Employee\s*:\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})', text)
+        if not name_match:
+            name_match = re.search(r'(?:Mr\.|Ms\.|Mrs\.)\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]+(?:was employed|worked|joined)', text)
+        if not name_match:
+            name_match = re.search(r'(?m)^\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]+(?:worked|joined)', text)
+        if not name_match:
+            name_match = re.search(r'(?m)^\s*([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]+was employed', text)
+        if not name_match:
+            name_match = re.search(r'(?:certifies that|confirm that)\s+([A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){1,3})[ \t]+(?:was employed|worked)', text, re.IGNORECASE)
         if name_match:
             emp_name = name_match.group(1).strip()
             
@@ -84,33 +96,68 @@ class MockAIProvider(AIExtractionProvider):
         company_explicit = False
         company_fallback = False
         comp_match = re.search(
-            r'(?:employed with|worked with|employed by|worked for)\s+'
+            r'(?:employed with|worked with|employed by|worked for|worked at|employed at)\s+'
             r'(.+?)\s+(?:as|between|from)\b',
             text,
             re.IGNORECASE | re.DOTALL,
         )
         if not comp_match:
             comp_match = re.search(r'(?:organization\s+|our organization\s+)\s*([A-Z0-9][A-Za-z0-9\s.,&-]+?(?:Ltd|Limited|Inc|Corporation|Corp|Labs|Technologies|Solutions|Services))', text, re.IGNORECASE)
+        if not comp_match:
+            comp_match = re.search(r'Company Name\s*:\s*([^\n]+)', text, re.IGNORECASE)
+        if not comp_match:
+            comp_match = re.search(r'joined\s+([A-Z][A-Za-z0-9 ]+?)\s+(?:on|as)\b', text)
         if comp_match:
             company_name = ' '.join(comp_match.group(1).split()).strip(' ,.')
             company_explicit = True
         if not company_name or company_name.lower() == 'our organization':
             headings = re.findall(r'(?m)^\s*([A-Z][A-Z0-9 &.-]{4,})\s*$', text)
-            excluded = {'EXPERIENCE LETTER', 'EXPERIENCE CERTIFICATE', 'EMPLOYMENT CERTIFICATE', 'TO WHOMSOEVER IT MAY CONCERN'}
+            excluded = {
+                'EXPERIENCE LETTER', 'EXPERIENCE CERTIFICATE', 'EMPLOYMENT CERTIFICATE',
+                'TO WHOMSOEVER IT MAY CONCERN', 'EMPLOYMENT HISTORY',
+                'CURRENT EMPLOYMENT LETTER', 'EMPLOYMENT VERIFICATION',
+                'CAREER CERTIFICATE', 'ACME TECHNOLOGIES - EXPERIENCE LETTER',
+            }
             company_name = next((heading.title() for heading in headings if heading not in excluded), company_name)
             company_fallback = bool(company_name)
             
         designation = None
-        desig_match = re.search(r'(?:as a|as an|served as|role of|position of|held the position of)\s+(?:an?\s+)?([A-Za-z\s]+?(?:Engineer|Developer|Analyst|Manager|Consultant|Specialist|Lead|Director|Associate))', text, re.IGNORECASE)
+        desig_match = re.search(r'(?:as a|as an|served as|role of|position of|held the position of)\s+(?:an?\s+)?([A-Za-z\s]+?(?:Engineer|Developer|Analyst|Manager|Consultant|Specialist|Lead|Director|Associate|Tester))', text, re.IGNORECASE)
+        if not desig_match:
+            desig_match = re.search(r'Designation\s*:\s*([A-Za-z ]+)', text, re.IGNORECASE)
         if desig_match:
             designation = desig_match.group(1).strip()
 
         joining_date = None
         last_working_date = None
-        date_range_match = re.search(r'(?:from|between)\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})\s+(?:to|and)\s+([A-Za-z]+\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
-        if date_range_match:
-            joining_date = parse_date_to_iso(date_range_match.group(1))
-            last_working_date = parse_date_to_iso(date_range_match.group(2))
+        date_pattern = r'(?:[A-Za-z]+\s+\d{1,2},?\s+\d{4}|\d{1,2}[/-]\d{1,2}[/-]\d{4}|\d{1,2}-[A-Za-z]+-\d{4})'
+        date_range_matches = list(re.finditer(rf'(?:from|between)\s+({date_pattern})\s+(?:to|and)\s+({date_pattern})', text, re.IGNORECASE))
+        date_range_match = date_range_matches[0] if date_range_matches else None
+        if date_range_matches:
+            parsed_ranges = [
+                (parse_date_to_iso(match.group(1)), parse_date_to_iso(match.group(2)))
+                for match in date_range_matches
+            ]
+            valid_ranges = [(start, end) for start, end in parsed_ranges if start and end]
+            if valid_ranges:
+                joining_date = min(start for start, _ in valid_ranges)
+                last_working_date = max(end for _, end in valid_ranges)
+
+        joined_match = re.search(r'(?:joined|started employment)(?:\s+[^\n.]+?)?\s+(?:on\s+)?(' + date_pattern + r')', text, re.IGNORECASE)
+        if not joining_date and joined_match:
+            joining_date = parse_date_to_iso(joined_match.group(1))
+
+        labeled_joining_match = re.search(r'(?:date joined|joining date)\s*:\s*(' + date_pattern + r')', text, re.IGNORECASE)
+        if not joining_date and labeled_joining_match:
+            joining_date = parse_date_to_iso(labeled_joining_match.group(1))
+
+        labeled_last_match = re.search(r'(?:last working day|last working date)\s*:\s*(' + date_pattern + r')', text, re.IGNORECASE)
+        if not last_working_date and labeled_last_match:
+            last_working_date = parse_date_to_iso(labeled_last_match.group(1))
+
+        explicit_last_match = re.search(r'(?:last working day|final separation record)\s*:?\s*(' + date_pattern + r')', text, re.IGNORECASE)
+        if explicit_last_match:
+            last_working_date = parse_date_to_iso(explicit_last_match.group(1))
 
         duration = calculate_duration(joining_date, last_working_date)
         duration_calculated = bool(duration)
@@ -119,7 +166,7 @@ class MockAIProvider(AIExtractionProvider):
             if dur_match:
                 duration = dur_match.group(1).strip()
 
-        issue_match = re.search(r'(?:letter\s+)?(?:date|issued on|issue date)\s*:?\s*([A-Za-z]+\s+\d{1,2},?\s+\d{4})', text, re.IGNORECASE)
+        issue_match = re.search(r'(?:letter\s+)?(?:date|issued on|issue date|date of issue)\s*:?\s*(' + date_pattern + r')', text, re.IGNORECASE)
         letter_issue_date = parse_date_to_iso(issue_match.group(1)) if issue_match else None
 
         signatory_match = re.search(
@@ -131,6 +178,9 @@ class MockAIProvider(AIExtractionProvider):
         signatory_designation = signatory_match.group(2).strip() if signatory_match else None
 
         emp_type = 'Full-time' if 'full-time' in lower_text else ('Part-time' if 'part-time' in lower_text else None)
+        if not emp_type:
+            type_match = re.search(r'Employment Type\s*:\s*([^\n]+)', text, re.IGNORECASE)
+            emp_type = type_match.group(1).strip() if type_match else None
 
         scores = {
             'employee_name': confidence_score(emp_name, explicit=bool(name_match), corroborated=bool(emp_name and company_name)),
